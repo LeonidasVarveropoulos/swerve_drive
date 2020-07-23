@@ -12,48 +12,111 @@ import math
 # Creates node
 rospy.init_node('swerve_drive_vel_to_motor')
 
-class CmdVelToRpm:
+class SwerveToMotor:
     def __init__(self):
         rospy.loginfo("Started node")
 
         rospy.Subscriber("/cmd_vel", Twist, self.cmd_vel_callback)
         self.cmd_vel_data = Twist()
 
-        # Publishing data
-        self.left_rpm_pub = rospy.Publisher("cmd_vel/left", Float64, queue_size=50)
-        self.right_rpm_pub = rospy.Publisher("cmd_vel/right", Float64, queue_size=50)
+        # Front left swerve module
+        self.front_left_vel = rospy.Publisher("swerve_front_left/vel", Float64, queue_size=50)
+        self.front_left_angle = rospy.Publisher("swerve_front_left/angle", Float64, queue_size=50)
+
+        # Front right swerve module
+        self.front_right_vel = rospy.Publisher("swerve_front_right/vel", Float64, queue_size=50)
+        self.front_right_angle = rospy.Publisher("swerve_front_right/angle", Float64, queue_size=50)
+
+        # Back left swerve module
+        self.back_left_vel = rospy.Publisher("swerve_back_left/vel", Float64, queue_size=50)
+        self.back_left_angle = rospy.Publisher("swerve_back_left/angle", Float64, queue_size=50)
+
+        # Back right swerve module
+        self.back_right_vel = rospy.Publisher("swerve_back_right/vel", Float64, queue_size=50)
+        self.back_right_angle = rospy.Publisher("swerve_back_right/angle", Float64, queue_size=50)
 
         self.body_width = rospy.get_param("body_width", 0.5969)
+        self.body_length = rospy.get_param("body_length", 1.029)
 
         self.wheel_circum = rospy.get_param("wheel_diameter", 0.1524) * math.pi
+
+        # This will be the current angle of the robot
+        rospy.Subscriber("/global_pose", PoseWithCovarianceStamped, self.robot_pose_callback)
+        self.current_angle = 0
     
-    def main(self):
-        # Needed for ros node
-        rate = rospy.Rate(10)
-        while not rospy.is_shutdown():
-            rate.sleep()
+    def robot_pose_callback(self, msg):
+        quat = (msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w)
+        euler = tf.transformations.euler_from_quaternion(quat)
+        self.current_angle = euler[2]
 
     def cmd_vel_callback(self, msg):
         self.cmd_vel_data = msg
 
-        vx = self.cmd_vel_data.linear.x
+        # Switched x and y to follow swerve formula
+        vx = self.cmd_vel_data.linear.y
+        vy = self.cmd_vel_data.linear.x
+
+        # Transform the forward (vy) and the strafe (vx) to make field orientated
+        temp = vy * math.cos(self.current_angle) + vx * math.sin(self.current_angle)
+        vx = -vy * math.sin(self.current_angle) + vx * math.cos(self.current_angle)
+        vy = temp
+
         vth = self.cmd_vel_data.angular.z
 
-        left_distance = ((vx*2)-(vth*self.body_width))/2.0
-        right_distance = (vth * self.body_width) + left_distance
+        a = vx - (vth * self.body_length/2)
+        b = vx + (vth * self.body_length/2)
+        c = vy - (vth * self.body_width/2)
+        d = vy + (vth * self.body_width/2)
 
-        right_rpm = (right_distance/self.wheel_circum) * 60.0
-        left_rpm = (left_distance/self.wheel_circum) * 60.0
+        # Front left
+        front_left_speed = Float64()
+        front_left_angle = Float64()
 
-        right_data = Float64()
-        left_data = Float64()
+        front_left_speed.data = math.sqrt(math.pow(b, 2) + math.pow(d, 2))
+        front_left_angle.data = math.atan2(b, d) * 180/math.pi
 
-        right_data.data = right_rpm
-        left_data.data = left_rpm
+        # Front right
+        front_right_speed = Float64()
+        front_right_angle = Float64()
 
-        self.right_rpm_pub.publish(right_data)
-        self.left_rpm_pub.publish(left_data)
+        front_right_speed.data = math.sqrt(math.pow(b, 2) + math.pow(c, 2))
+        front_right_angle.data = math.atan2(b, c) * 180/math.pi
+
+        # Back left
+        back_left_speed = Float64()
+        back_left_angle = Float64()
+        
+        back_left_speed.data = math.sqrt(math.pow(a, 2) + math.pow(d, 2))
+        back_left_angle.data = math.atan2(a, d) * 180/math.pi
+
+        # Back right
+        back_right_speed = Float64()
+        back_right_angle = Float64()
+        
+        back_right_speed.data = math.sqrt(math.pow(a, 2) + math.pow(c, 2))
+        back_right_angle.data = math.atan2(a, c) * 180/math.pi
+
+        # print(front_left_speed, front_left_angle)
+        # print(front_right_speed, front_right_angle)
+        # print(back_left_speed, back_left_angle)
+        # print(back_right_speed, back_right_angle)
+
+        # Front left swerve
+        self.front_left_vel.publish(front_left_speed)
+        self.front_left_angle.publish(front_left_angle)
+
+        # Front right swerve
+        self.front_right_vel.publish(front_right_speed)
+        self.front_right_angle.publish(front_right_angle)
+
+        # Back left swerve
+        self.back_left_vel.publish(back_left_speed)
+        self.back_left_angle.publish(back_left_angle)
+
+        # Back right swerve
+        self.back_right_vel.publish(back_right_speed)
+        self.back_right_angle.publish(back_right_angle)
 
 if __name__ == '__main__':
-    rpm = CmdVelToRpm()
-    rpm.main()
+    swerve = SwerveToMotor()
+    rospy.spin()
