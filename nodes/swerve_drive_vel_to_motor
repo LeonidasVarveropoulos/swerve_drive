@@ -20,20 +20,20 @@ class SwerveToMotor:
         self.cmd_vel_data = Twist()
 
         # Front left swerve module
-        self.front_left_vel = rospy.Publisher("swerve_front_left/vel", Float64, queue_size=50)
-        self.front_left_angle = rospy.Publisher("swerve_front_left/angle", Float64, queue_size=50)
+        self.front_left_vel = rospy.Publisher("swerve_front_left/vel", Float32, queue_size=50)
+        self.front_left_angle = rospy.Publisher("swerve_front_left/angle", Float32, queue_size=50)
 
         # Front right swerve module
-        self.front_right_vel = rospy.Publisher("swerve_front_right/vel", Float64, queue_size=50)
-        self.front_right_angle = rospy.Publisher("swerve_front_right/angle", Float64, queue_size=50)
+        self.front_right_vel = rospy.Publisher("swerve_front_right/vel", Float32, queue_size=50)
+        self.front_right_angle = rospy.Publisher("swerve_front_right/angle", Float32, queue_size=50)
 
         # Back left swerve module
-        self.back_left_vel = rospy.Publisher("swerve_back_left/vel", Float64, queue_size=50)
-        self.back_left_angle = rospy.Publisher("swerve_back_left/angle", Float64, queue_size=50)
+        self.back_left_vel = rospy.Publisher("swerve_back_left/vel", Float32, queue_size=50)
+        self.back_left_angle = rospy.Publisher("swerve_back_left/angle", Float32, queue_size=50)
 
         # Back right swerve module
-        self.back_right_vel = rospy.Publisher("swerve_back_right/vel", Float64, queue_size=50)
-        self.back_right_angle = rospy.Publisher("swerve_back_right/angle", Float64, queue_size=50)
+        self.back_right_vel = rospy.Publisher("swerve_back_right/vel", Float32, queue_size=50)
+        self.back_right_angle = rospy.Publisher("swerve_back_right/angle", Float32, queue_size=50)
 
         self.body_width = rospy.get_param("body_width", 0.5969)
         self.body_length = rospy.get_param("body_length", 1.029)
@@ -47,7 +47,11 @@ class SwerveToMotor:
     def robot_pose_callback(self, msg):
         quat = (msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w)
         euler = tf.transformations.euler_from_quaternion(quat)
-        self.current_angle = euler[2]
+        current_angle = euler[2]
+        if current_angle < 0:
+            current_angle += math.pi * 2
+        self.current_angle = -current_angle
+        print(self.current_angle)
 
     def cmd_vel_callback(self, msg):
         self.cmd_vel_data = msg
@@ -61,7 +65,8 @@ class SwerveToMotor:
         vx = -vy * math.sin(self.current_angle) + vx * math.cos(self.current_angle)
         vy = temp
 
-        vth = self.cmd_vel_data.angular.z
+        # Inverted to turn right direction
+        vth = -self.cmd_vel_data.angular.z
 
         a = vx - (vth * self.body_length/2)
         b = vx + (vth * self.body_length/2)
@@ -69,29 +74,29 @@ class SwerveToMotor:
         d = vy + (vth * self.body_width/2)
 
         # Front left
-        front_left_speed = Float64()
-        front_left_angle = Float64()
+        front_left_speed = Float32()
+        front_left_angle = Float32()
 
         front_left_speed.data = math.sqrt(math.pow(b, 2) + math.pow(d, 2))
         front_left_angle.data = math.atan2(b, d) * 180/math.pi
 
         # Front right
-        front_right_speed = Float64()
-        front_right_angle = Float64()
+        front_right_speed = Float32()
+        front_right_angle = Float32()
 
         front_right_speed.data = math.sqrt(math.pow(b, 2) + math.pow(c, 2))
         front_right_angle.data = math.atan2(b, c) * 180/math.pi
 
         # Back left
-        back_left_speed = Float64()
-        back_left_angle = Float64()
+        back_left_speed = Float32()
+        back_left_angle = Float32()
         
         back_left_speed.data = math.sqrt(math.pow(a, 2) + math.pow(d, 2))
         back_left_angle.data = math.atan2(a, d) * 180/math.pi
 
         # Back right
-        back_right_speed = Float64()
-        back_right_angle = Float64()
+        back_right_speed = Float32()
+        back_right_angle = Float32()
         
         back_right_speed.data = math.sqrt(math.pow(a, 2) + math.pow(c, 2))
         back_right_angle.data = math.atan2(a, c) * 180/math.pi
